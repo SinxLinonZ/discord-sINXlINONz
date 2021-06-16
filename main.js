@@ -10,8 +10,7 @@ const cooldowns = new Discord.Collection();
 
 
 // Music bot queue
-global.MusicQueue = new Map();
-// global.MusicQueue;
+global.MusicQueue = new Discord.Collection();
 
 
 // Load & set command files
@@ -54,11 +53,13 @@ client.on("message", (message) => {
     // };
     // End of dirty code
 
+    // Get Input
     if (!message.content.startsWith(prefix) || message.author.bot) return;
 
     const args = message.content.slice(prefix.length).trim().split(/ +/);
     const commandName = args.shift().toLowerCase();
 
+    // Search command
     const command =
         client.commands.get(commandName) ||
         client.commands.find(
@@ -67,6 +68,7 @@ client.on("message", (message) => {
 
     if (!command) return;
 
+    // Error handle
     if (command.guildOnly && message.channel.type === "dm") {
         return message.reply("I can't execute that command inside DMs!");
     }
@@ -81,11 +83,11 @@ client.on("message", (message) => {
         return message.channel.send(reply);
     }
 
+    // Cooldown
     if (!cooldowns.has(command.name)) {
         cooldowns.set(command.name, new Discord.Collection());
     }
 
-    // Cooldown
     const now = Date.now();
     const timestamps = cooldowns.get(command.name);
     const cooldownAmount = (command.cooldown || defaultCooldown) * 1000;

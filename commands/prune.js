@@ -1,5 +1,6 @@
 module.exports = {
     name: "prune",
+    aliases: ["delete"],
     description: "prune",
     execute(message, args) {
         const amount = parseInt(args[0]);

@@ -3,43 +3,104 @@ module.exports = {
     description: "Play music",
 
     args: true,
-    usage: "<...args>",
+    usage: `
+    play <url>
+    skip
+    stop
+    volume [volume to set]
+    `,
     guildOnly: true,
     cooldown: 1,
     aliases: ["song"],
 
     execute(message, args) {
-        const serverQueue = MusicQueue.get(message.guild.id);
+        if (!message.member.voice.channel) {
+            return message.channel.send(
+                `${message.author} You have to be in a voice channel!`
+            );
+        }
 
-        if (args[0] == "play") {
+        const serverQueue = MusicQueue.get(message.guild.id);
+        const subCmd = args[0];
+
+        if (subCmd == "play") {
             this.postPlay(message, args, serverQueue);
-        } else if (args[0] == "pause") {
-            message.channel.send("pause");
-        } else if (args[0] == "skip") {
+            return;
+        }
+
+        if (!serverQueue) {
+            return message.channel.send(`No song's playing for now`);
+        }
+
+        if (subCmd == "skip") {
             this.skip(message, serverQueue);
-        } else if (args[0] == "stop") {
+        } else if (subCmd == "stop") {
             this.stop(message, serverQueue);
+        } else if (subCmd == "volume") {
+            this.volume(message, serverQueue, args);
+        } else if (subCmd == "pause") {
+            this.pause(message, serverQueue);
+        } else if (subCmd == "resume") {
+            this.resume(message, serverQueue);
         } else {
             message.channel.send("Invalid command");
         }
     },
 
-    skip(message, serverQueue) {
-        if (!message.member.voice.channel)
+    pause(message, serverQueue) {
+        serverQueue.dispatcher.pause();
+    },
+
+    resume(message, serverQueue) {
+        serverQueue.dispatcher.resume();
+    },
+
+    volume(message, serverQueue, args) {
+        if (!args[1]) {
             return message.channel.send(
-                "You have to be in a voice channel to stop the music!"
+                `Current volume: ${serverQueue.volume}`
             );
+        }
+
+        const volume = args[1];
+        if (volume > 200 || volume < 0) {
+            return message.channel.send("Invalid volume value!");
+        }
+
+        // let oldVolume = serverQueue.volume;
+        // serverQueue.volume = volume;
+
+        // let delayTime = 0;
+        // if (serverQueue.volume < oldVolume) {
+        //     while (oldVolume != serverQueue.volume) {
+        //         --oldVolume;
+        //         setTimeout(() => {
+        //             serverQueue.dispatcher.setVolume(oldVolume / 100);
+        //         }, delayTime);
+        //         delayTime += 100;
+        //     }
+        // } else if (serverQueue.volume > oldVolume) {
+        //     while (oldVolume != serverQueue.volume) {
+        //         ++oldVolume;
+        //         setTimeout(() => {
+        //             serverQueue.dispatcher.setVolume(oldVolume / 100);                    
+        //         }, delayTime);
+        //         delayTime += 100;
+        //     }
+        // }
+        
+        serverQueue.volume = volume
+        serverQueue.dispatcher.setVolume(serverQueue.volume / 100);
+        serverQueue.textChannel.send(`Set volume to ${serverQueue.volume}`);
+    },
+
+    skip(message, serverQueue) {
         if (!serverQueue)
             return message.channel.send("There is no song that I could skip!");
         serverQueue.connection.dispatcher.end();
     },
 
     stop(message, serverQueue) {
-        if (!message.member.voice.channel)
-            return message.channel.send(
-                "You have to be in a voice channel to stop the music!"
-            );
-
         if (!serverQueue)
             return message.channel.send("There is no song that I could stop!");
 
@@ -48,12 +109,8 @@ module.exports = {
     },
 
     async postPlay(message, args, serverQueue) {
+        // Error handle
         const voiceChannel = message.member.voice.channel;
-        if (!voiceChannel) {
-            return message.channel.send(
-                "You need to be in a voice channel to play music!"
-            );
-        }
 
         const permissions = voiceChannel.permissionsFor(message.client.user);
         if (!permissions.has("CONNECT") || !permissions.has("SPEAK")) {
@@ -62,7 +119,11 @@ module.exports = {
             );
         }
 
+        // Fetch song
+
+        // args.shift();
         // args.forEach(async (url) => {
+        // const songInfo = await ytdl.getInfo(url);
         const songInfo = await ytdl.getInfo(args[1]);
         const song = {
             title: songInfo.videoDetails.title,
@@ -74,8 +135,9 @@ module.exports = {
                 textChannel: message.channel,
                 voiceChannel: voiceChannel,
                 connection: null,
+                dispatcher: null,
                 songs: [],
-                volume: 5,
+                volume: 100,
                 playing: true,
             };
 
@@ -104,18 +166,21 @@ module.exports = {
         const serverQueue = MusicQueue.get(guild.id);
         if (!song) {
             serverQueue.voiceChannel.leave();
+            serverQueue.textChannel.send(`Queue ended. I'm leaving~~`);
             MusicQueue.delete(guild.id);
             return;
         }
 
         const dispatcher = serverQueue.connection
-            .play(ytdl(song.url, { quality: 'highestaudio' }))
+            .play(ytdl(song.url, { quality: "highestaudio" }))
             .on("finish", () => {
                 serverQueue.songs.shift();
                 this.play(guild, serverQueue.songs[0]);
             })
             .on("error", (error) => console.error(error));
-        dispatcher.setVolumeLogarithmic(serverQueue.volume / 5);
+        dispatcher.setVolumeLogarithmic(1);
+        dispatcher.setVolume(serverQueue.volume / 100);
+        serverQueue.dispatcher = dispatcher;
         serverQueue.textChannel.send(`Start playing: **${song.title}**`);
     },
 };
