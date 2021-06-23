@@ -3,15 +3,14 @@ module.exports = {
     description: "Play music",
 
     args: true,
-    usage: `
-    play <url>
+    usage: `play <youtube_url>
     skip
     stop
-    volume [volume to set]
-    `,
+    volume [volume to set]`,
     guildOnly: true,
     cooldown: 1,
     aliases: ["song"],
+
 
     execute(message, args) {
         if (!message.member.voice.channel) {
@@ -24,6 +23,7 @@ module.exports = {
         const subCmd = args[0];
 
         if (subCmd == "play") {
+            args.shift();
             this.postPlay(message, args, serverQueue);
             return;
         }
@@ -32,66 +32,77 @@ module.exports = {
             return message.channel.send(`No song's playing for now`);
         }
 
-        if (subCmd == "skip") {
-            this.skip(message, serverQueue);
-        } else if (subCmd == "stop") {
-            this.stop(message, serverQueue);
-        } else if (subCmd == "volume") {
-            this.volume(message, serverQueue, args);
-        } else if (subCmd == "pause") {
-            this.pause(message, serverQueue);
-        } else if (subCmd == "resume") {
-            this.resume(message, serverQueue);
-        } else {
-            message.channel.send("Invalid command");
+        switch (subCmd) {
+            case "skip":
+                this.skip(message, serverQueue);
+                break;
+            case "stop":
+                this.stop(message, serverQueue);
+                break;
+            case "volume":
+                this.volume(message, serverQueue, args);
+                break;
+            case "queue":
+                this.queue(message, serverQueue, args);
+                break;
+            case "pause":
+                serverQueue.dispatcher.pause();
+                break;
+            case "resume":
+                serverQueue.dispatcher.resume();
+                break;
+            default:
+                message.channel.send("Invalid command");
+                break;
         }
     },
 
-    pause(message, serverQueue) {
-        serverQueue.dispatcher.pause();
-    },
+    queue(message, serverQueue, args) {
+        args.shift();
 
-    resume(message, serverQueue) {
-        serverQueue.dispatcher.resume();
+        if (args.length == 0) {
+            let songQueue = "";
+            for (let i = 0; i < serverQueue.songs.length; i++) {
+                const song = serverQueue.songs[i];
+                // embed.addField(`${i}`, `${song.title}`, false);
+                songQueue += `${i}: ${song.title}\n`;
+            }
+
+            let embed = new Discord.MessageEmbed()
+                .setColor("#0096e0")
+                .setDescription(songQueue);
+
+            message.channel.send(embed);
+        } else {
+            console.log(args);
+        }
     },
 
     volume(message, serverQueue, args) {
         if (!args[1]) {
             return message.channel.send(
-                `Current volume: ${serverQueue.volume}`
+                new Discord.MessageEmbed()
+                    .setColor("#0096e0")
+                    .setAuthor(`Current volume: ${serverQueue.volume}`)
             );
         }
 
         const volume = args[1];
         if (volume > 200 || volume < 0) {
-            return message.channel.send("Invalid volume value!");
+            return message.channel.send(
+                new Discord.MessageEmbed()
+                    .setColor("#c90000")
+                    .setAuthor(`Invalid volume value!`)
+            );
         }
 
-        // let oldVolume = serverQueue.volume;
-        // serverQueue.volume = volume;
-
-        // let delayTime = 0;
-        // if (serverQueue.volume < oldVolume) {
-        //     while (oldVolume != serverQueue.volume) {
-        //         --oldVolume;
-        //         setTimeout(() => {
-        //             serverQueue.dispatcher.setVolume(oldVolume / 100);
-        //         }, delayTime);
-        //         delayTime += 100;
-        //     }
-        // } else if (serverQueue.volume > oldVolume) {
-        //     while (oldVolume != serverQueue.volume) {
-        //         ++oldVolume;
-        //         setTimeout(() => {
-        //             serverQueue.dispatcher.setVolume(oldVolume / 100);                    
-        //         }, delayTime);
-        //         delayTime += 100;
-        //     }
-        // }
-        
-        serverQueue.volume = volume
+        serverQueue.volume = volume;
         serverQueue.dispatcher.setVolume(serverQueue.volume / 100);
-        serverQueue.textChannel.send(`Set volume to ${serverQueue.volume}`);
+        serverQueue.textChannel.send(
+            new Discord.MessageEmbed()
+                .setColor("#0096e0")
+                .setAuthor(`Set volume to ${serverQueue.volume}`)
+        );
     },
 
     skip(message, serverQueue) {
@@ -124,11 +135,51 @@ module.exports = {
         // args.shift();
         // args.forEach(async (url) => {
         // const songInfo = await ytdl.getInfo(url);
-        const songInfo = await ytdl.getInfo(args[1]);
-        const song = {
-            title: songInfo.videoDetails.title,
-            url: songInfo.videoDetails.video_url,
-        };
+
+        // For single song
+        let songInfo = false;
+        let song = false;
+
+        // For playlist
+        let songList = [];
+
+        if (args[0].includes("playlist")) {
+            const urlParams = new URLSearchParams(
+                args[0].replace(/[^\?]*/, "")
+            );
+            const params = Object.fromEntries(urlParams.entries());
+
+            message.channel.send(
+                `Parsing playlist, this would take some time...`
+            );
+            let songs = await usetube.getPlaylistVideos(params["list"]);
+            for (const _song of songs) {
+                let _songInfo;
+                try {
+                    _songInfo = await ytdl.getInfo(_song["id"]);
+                } catch (err) {
+                    message.channel.send(
+                        `Failed to fetch id \`${
+                            _song["id"]
+                        }\`.\n ${err.toString()}`
+                    );
+                    message.channel.send(`Continue parsing...`);
+                    continue;
+                }
+                let __song = {
+                    title: _songInfo.videoDetails.title,
+                    url: _songInfo.videoDetails.video_url,
+                };
+
+                songList.push(__song);
+            }
+        } else {
+            songInfo = await ytdl.getInfo(args[0]);
+            song = {
+                title: songInfo.videoDetails.title,
+                url: songInfo.videoDetails.video_url,
+            };
+        }
 
         if (!serverQueue) {
             const queueContruct = {
@@ -142,7 +193,15 @@ module.exports = {
             };
 
             MusicQueue.set(message.guild.id, queueContruct);
-            queueContruct.songs.push(song);
+
+            if (song) {
+                queueContruct.songs.push(song);
+            } else {
+                queueContruct.songs = songList;
+                message.channel.send(
+                    `${songList.length} songs has been added to the queue!`
+                );
+            }
 
             try {
                 let connection = await voiceChannel.join();
@@ -154,10 +213,17 @@ module.exports = {
                 return message.channel.send(err);
             }
         } else {
-            serverQueue.songs.push(song);
-            return message.channel.send(
-                `${song.title} has been added to the queue!`
-            );
+            if (song) {
+                queueContruct.songs.push(song);
+                return message.channel.send(
+                    `${song.title} has been added to the queue!`
+                );
+            } else {
+                queueContruct.songs.push(songList);
+                return message.channel.send(
+                    `${songList.length} songs has been added to the queue!`
+                );
+            }
         }
         // });
     },
@@ -177,7 +243,13 @@ module.exports = {
                 serverQueue.songs.shift();
                 this.play(guild, serverQueue.songs[0]);
             })
-            .on("error", (error) => console.error(error));
+            .on("error", (error) => {
+                console.error(error);
+                serverQueue.textChannel.send(
+                    "Somehting's wrong, contact admin!!!!!!"
+                );
+                // TODO: fix
+            });
         dispatcher.setVolumeLogarithmic(1);
         dispatcher.setVolume(serverQueue.volume / 100);
         serverQueue.dispatcher = dispatcher;

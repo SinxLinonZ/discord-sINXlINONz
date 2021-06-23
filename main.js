@@ -1,7 +1,8 @@
-const fs = require("fs");
-const Discord = require("discord.js");
+global.fs = require("fs");
+global.Discord = require("discord.js");
 const { prefix, token, defaultCooldown } = require("./config.json");
 global.ytdl = require('ytdl-core');
+global.usetube = require('usetube');
 
 const client = new Discord.Client();
 client.commands = new Discord.Collection();
@@ -23,6 +24,7 @@ for (const file of commandFiles) {
 }
 
 client.once("ready", () => {
+    client.user.setActivity(`use [::help] to start!`, { type: 'PLAYING' });
     console.log("bot started.");
 });
 
@@ -37,21 +39,6 @@ client.once("disconnect", () => {
 
 client.on("message", (message) => {
     console.log(message.author.username + ":\t" + message.content);
-
-    // Dirty code
-    // if (!message.content.startsWith(prefix) || message.author.bot) {
-    //     if (message.content.includes("gsq") && !message.author.bot) {
-    //         message.channel.send("gsq? 傻逼咯");
-    //     } else if (message.content.includes("lbq") && !message.author.bot) {
-    //         message.channel.send("lbq? 傻逼咯");
-    //     } else if (message.content.includes("大見") && !message.author.bot) {
-    //         message.channel.send("大見？クソ野郎じゃね？");
-    //     } else if ((message.content.includes("bot") || message.content.includes("机器人")) && !message.author.bot) {
-    //         message.channel.send("阿？我不是阿，我没有阿，不要乱说");
-    //     }
-    //     else return;
-    // };
-    // End of dirty code
 
     // Get Input
     if (!message.content.startsWith(prefix) || message.author.bot) return;
