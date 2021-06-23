@@ -13,6 +13,7 @@ const cooldowns = new Discord.Collection();
 // Music bot queue
 global.MusicQueue = new Discord.Collection();
 
+global.SubCommands = new Discord.Collection();
 
 // Load & set command files
 const commandFiles = fs
@@ -21,7 +22,24 @@ const commandFiles = fs
 for (const file of commandFiles) {
     const command = require(`./commands/${file}`);
     client.commands.set(command.name, command);
+
+    // Load & set sub-commands
+    if (command.hasSubcmd) {
+        let _command_list = new Discord.Collection();
+
+        const commandFiles = fs
+            .readdirSync(`./sub-commands/${command.name}`)
+            .filter((file) => file.endsWith(".js"));
+        for (const file of commandFiles) {
+            const _command = require(`./sub-commands/${command.name}/${file}`);
+            _command_list.set(_command.name, _command);
+        }
+
+        SubCommands.set(command.name, _command_list);
+    }
 }
+
+
 
 client.once("ready", () => {
     client.user.setActivity(`use [::help] to start!`, { type: 'PLAYING' });
