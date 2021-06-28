@@ -26,8 +26,6 @@ module.exports = {
         const commandName = args.shift().toLowerCase();
         const command =
                 SubCommands.get(this.name).get(commandName) ||
-            // this.commands.get(commandName) ||
-            // this.commands.find(
                 SubCommands.get(this.name).find(
                 (cmd) => cmd.aliases && cmd.aliases.includes(commandName)
             );

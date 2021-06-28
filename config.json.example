@@ -1,5 +1,6 @@
 {
     "prefix": "!",
     "token": "token",
-    "defaultCooldown": 1
+    "defaultCooldown": 1,
+    "sc_client_id": "abcdefg"
 }

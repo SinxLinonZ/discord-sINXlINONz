@@ -12,24 +12,29 @@ module.exports = {
 
     async _parseArg(args) {
         /**
-         * type:            |['yt-video', 'yt-playlist']|
+         * type:            |['yt-video', 'yt-playlist', 'soundcloud']|
          * yt_videos:       ['url', 'url', ...]
          * yt_playlists:    ['url', 'url', ...]
+         * sc_tracks:       ['url', 'url', ...]
          *
          * options:
          *      volume:     volume(0-200) *100
          *      order:      random | loop | loopq | *normal
          */
+
+        // Init return data
         let result = {
             type: new Set(),
             yt_videos: [],
             yt_playlists: [],
+            sc_tracks: [],
             options: {
                 volume: 100,
                 order: "normal",
             },
         };
 
+        // Parse URL
         for (let i = 0; i < args.length; i++) {
             const arg = args[i];
 
@@ -44,6 +49,7 @@ module.exports = {
                 const option = arg.replace(/-*/, "");
                 let optionArg = args[++i];
 
+                // Error handle
                 // No option Arg
                 if (
                     optionArg.includes("watch?v=") ||
@@ -81,6 +87,7 @@ module.exports = {
                         result.options.volume = optionArg;
                     }
                 }
+
                 // Playback order option
                 else if (option == "o" || option == "order") {
                     const origin_optionArg = optionArg;
@@ -102,6 +109,12 @@ module.exports = {
                 }
             }
 
+            // is soundcloud track
+            else if (arg.includes("soundcloud.com")) {
+                result.type.add("soundcloud");
+                result.sc_tracks.push(arg);
+            }
+
             // is video or nothing
             else {
                 result.type.add("yt-video");
@@ -113,18 +126,6 @@ module.exports = {
     },
 
     async _postPlay(serverQueue, message, data) {
-        /**
-         * data:
-         *
-         * type:            |['yt-video', 'yt-playlist']|
-         * yt_videos:       ['url', 'url', ...]
-         * yt_playlists:    ['url', 'url', ...]
-         *
-         * options:
-         *      volume:     volume(0-200) *100
-         *      order:      random | loop | loopq | *normal
-         */
-
         // Error handle
         const voiceChannel = message.member.voice.channel;
 
@@ -180,6 +181,29 @@ module.exports = {
             }
         }
 
+        if (data.type.has("soundcloud")) {
+            for (const url of data.sc_tracks) {
+                let _songInfo;
+                try {
+                    _songInfo = await scdl.getInfo(url);
+                } catch (err) {
+                    message.channel.send(
+                        `Failed to fetch url \`${
+                            url
+                        }\`.\n ${err.toString()}`
+                    );
+                    continue;
+                }
+
+                let _song = {
+                    title: _songInfo.title,
+                    url: url,
+                    type: "sc"
+                };
+                songList.push(_song);
+            }
+        }
+
         // Not playing
         if (!serverQueue) {
             const queueContruct = {
@@ -230,7 +254,27 @@ module.exports = {
             return;
         }
 
-        const dispatcher = serverQueue.connection
+        let dispatcher;
+
+        // Soundcloud
+        if (song.type == "sc") {
+            dispatcher = serverQueue.connection
+            .play(await scdl.download(song.url))
+            .on("finish", () => {
+                serverQueue.songs.shift();
+                this._play(guild, serverQueue.songs[0]);
+            })
+            .on("error", (error) => {
+                console.error(error);
+                serverQueue.textChannel.send(`Failed to fetch **${song.title}**. Skipped.\n${error.toString()}`);
+                serverQueue.songs.shift();
+                this._play(guild, serverQueue.songs[0]);
+
+            });
+        } 
+        // Youtube
+        else {
+            dispatcher = serverQueue.connection
             .play(ytdl(song.url, { quality: "highestaudio" }))
             .on("finish", () => {
                 serverQueue.songs.shift();
@@ -238,11 +282,13 @@ module.exports = {
             })
             .on("error", (error) => {
                 console.error(error);
-                serverQueue.textChannel.send(
-                    "Somehting's wrong, contact admin!!!!!!"
-                );
-                // TODO: fix
+                serverQueue.textChannel.send(`Failed to fetch **${song.title}**. Skipped.\n${error.toString()}`);
+                serverQueue.songs.shift();
+                this._play(guild, serverQueue.songs[0]);
+
             });
+        }
+        
         dispatcher.setVolumeLogarithmic(1);
         dispatcher.setVolume(serverQueue.volume / 100);
         serverQueue.dispatcher = dispatcher;

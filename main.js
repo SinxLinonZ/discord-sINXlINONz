@@ -1,8 +1,10 @@
 global.fs = require("fs");
 global.Discord = require("discord.js");
-const { prefix, token, defaultCooldown } = require("./config.json");
+const { prefix, token, defaultCooldown, sc_client_id } = require("./config.json");
+global.sc_client_id = sc_client_id;
 global.ytdl = require('ytdl-core');
 global.usetube = require('usetube');
+global.scdl = require('soundcloud-downloader').default
 
 const client = new Discord.Client();
 client.commands = new Discord.Collection();
